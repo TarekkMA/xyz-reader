@@ -1,180 +1,153 @@
 package com.example.xyzreader.ui;
 
-import android.app.Fragment;
-import android.app.FragmentManager;
-import android.app.LoaderManager;
-import android.content.Loader;
 import android.database.Cursor;
-import android.graphics.drawable.ColorDrawable;
-import android.os.Build;
+import android.graphics.Color;
 import android.os.Bundle;
-import android.support.v13.app.FragmentStatePagerAdapter;
+import android.support.design.widget.BaseTransientBottomBar;
+import android.support.design.widget.CoordinatorLayout;
+import android.support.design.widget.Snackbar;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentStatePagerAdapter;
 import android.support.v4.view.ViewPager;
-import android.support.v7.app.ActionBarActivity;
-import android.util.TypedValue;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowInsets;
 
 import com.example.xyzreader.R;
 import com.example.xyzreader.data.ArticleLoader;
+import com.example.xyzreader.data.ItemsContentResolver;
 import com.example.xyzreader.data.ItemsContract;
+import com.squareup.sqlbrite2.SqlBrite;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.observers.DisposableObserver;
+import io.reactivex.schedulers.Schedulers;
 
 /**
  * An activity representing a single Article detail screen, letting you swipe between articles.
  */
-public class ArticleDetailActivity extends ActionBarActivity
-        implements LoaderManager.LoaderCallbacks<Cursor> {
+public class ArticleDetailActivity extends AppCompatActivity {
 
-    private Cursor mCursor;
-    private long mStartId;
+  private CompositeDisposable compositeDisposable = new CompositeDisposable();
 
-    private long mSelectedItemId;
-    private int mSelectedItemUpButtonFloor = Integer.MAX_VALUE;
-    private int mTopInset;
+  private Cursor mCursor;
+  private long mStartId;
 
-    private ViewPager mPager;
-    private MyPagerAdapter mPagerAdapter;
-    private View mUpButtonContainer;
-    private View mUpButton;
+  private long mSelectedItemId;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+  private ViewPager mPager;
+  private MyPagerAdapter mPagerAdapter;
+  private CoordinatorLayout rootLayout;
+  private Toolbar mToolbar;
+
+  @Override protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+
+    setContentView(R.layout.activity_article_detail);
+
+    mPagerAdapter = new MyPagerAdapter(getSupportFragmentManager());
+    mPager = (ViewPager) findViewById(R.id.pager);
+    rootLayout = (CoordinatorLayout) findViewById(R.id.root);
+    mPager.setAdapter(mPagerAdapter);
+
+    mPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
+      @Override public void onPageScrollStateChanged(int state) {
+        super.onPageScrollStateChanged(state);
+      }
+
+      @Override public void onPageSelected(int position) {
+        if (mCursor != null) {
+          mCursor.moveToPosition(position);
+          setTitle(mCursor.getString(ItemsContentResolver.Query.TITLE));
+          mSelectedItemId = mCursor.getLong(ItemsContentResolver.Query._ID);
         }
-        setContentView(R.layout.activity_article_detail);
+      }
+    });
 
-        getLoaderManager().initLoader(0, null, this);
+    mToolbar = (Toolbar) findViewById(R.id.toolbar);
+    setSupportActionBar(mToolbar);
+    getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
-        mPagerAdapter = new MyPagerAdapter(getFragmentManager());
-        mPager = (ViewPager) findViewById(R.id.pager);
-        mPager.setAdapter(mPagerAdapter);
-        mPager.setPageMargin((int) TypedValue
-                .applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1, getResources().getDisplayMetrics()));
-        mPager.setPageMarginDrawable(new ColorDrawable(0x22000000));
-
-        mPager.setOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
-            @Override
-            public void onPageScrollStateChanged(int state) {
-                super.onPageScrollStateChanged(state);
-                mUpButton.animate()
-                        .alpha((state == ViewPager.SCROLL_STATE_IDLE) ? 1f : 0f)
-                        .setDuration(300);
-            }
-
-            @Override
-            public void onPageSelected(int position) {
-                if (mCursor != null) {
-                    mCursor.moveToPosition(position);
-                }
-                mSelectedItemId = mCursor.getLong(ArticleLoader.Query._ID);
-                updateUpButtonPosition();
-            }
-        });
-
-        mUpButtonContainer = findViewById(R.id.up_container);
-
-        mUpButton = findViewById(R.id.action_up);
-        mUpButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                onSupportNavigateUp();
-            }
-        });
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            mUpButtonContainer.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
-                @Override
-                public WindowInsets onApplyWindowInsets(View view, WindowInsets windowInsets) {
-                    view.onApplyWindowInsets(windowInsets);
-                    mTopInset = windowInsets.getSystemWindowInsetTop();
-                    mUpButtonContainer.setTranslationY(mTopInset);
-                    updateUpButtonPosition();
-                    return windowInsets;
-                }
-            });
-        }
-
-        if (savedInstanceState == null) {
-            if (getIntent() != null && getIntent().getData() != null) {
-                mStartId = ItemsContract.Items.getItemId(getIntent().getData());
-                mSelectedItemId = mStartId;
-            }
-        }
+    if (savedInstanceState == null) {
+      if (getIntent() != null && getIntent().getData() != null) {
+        mStartId = ItemsContract.Items.getItemId(getIntent().getData());
+        mSelectedItemId = mStartId;
+      }
     }
+    loadData();
+  }
 
-    @Override
-    public Loader<Cursor> onCreateLoader(int i, Bundle bundle) {
-        return ArticleLoader.newAllArticlesInstance(this);
-    }
+  @Override protected void onPause() {
+    super.onPause();
+    compositeDisposable.clear();
+    mCursor.close();
+  }
 
-    @Override
-    public void onLoadFinished(Loader<Cursor> cursorLoader, Cursor cursor) {
-        mCursor = cursor;
-        mPagerAdapter.notifyDataSetChanged();
+  private void loadData() {
+    compositeDisposable.add(ItemsContentResolver.getAll(getContentResolver())
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+        .subscribeWith(new DisposableObserver<SqlBrite.Query>() {
+          @Override public void onNext(@NonNull SqlBrite.Query query) {
+            mCursor = query.run();
+            mPager.setAdapter(mPagerAdapter);
 
-        // Select the start ID
-        if (mStartId > 0) {
-            mCursor.moveToFirst();
-            // TODO: optimize
-            while (!mCursor.isAfterLast()) {
+            if (mStartId > 0) {
+              while (mCursor.moveToNext()) {
                 if (mCursor.getLong(ArticleLoader.Query._ID) == mStartId) {
-                    final int position = mCursor.getPosition();
-                    mPager.setCurrentItem(position, false);
-                    break;
+                  final int position = mCursor.getPosition();
+                  mPager.postDelayed(new Runnable() {
+                    @Override public void run() {
+                      mPager.setCurrentItem(position,false);
+                    }
+                  }, 100);
+                  break;
                 }
-                mCursor.moveToNext();
+              }
+              mStartId = 0;
             }
-            mStartId = 0;
-        }
+          }
+
+          @Override public void onError(@NonNull Throwable e) {
+            final Snackbar s = Snackbar.make(rootLayout, "Error loading data",
+                BaseTransientBottomBar.LENGTH_INDEFINITE);
+            s.setAction(R.string.retry_error, new View.OnClickListener() {
+              @Override public void onClick(View v) {
+                loadData();
+                s.dismiss();
+              }
+            });
+            s.setActionTextColor(Color.RED);
+            s.show();
+          }
+
+          @Override public void onComplete() {
+
+          }
+        }));
+  }
+
+  @Override public boolean onSupportNavigateUp() {
+    onBackPressed();
+    return true;
+  }
+
+  private class MyPagerAdapter extends FragmentStatePagerAdapter {
+
+    public MyPagerAdapter(FragmentManager fm) {
+      super(fm);
     }
 
-    @Override
-    public void onLoaderReset(Loader<Cursor> cursorLoader) {
-        mCursor = null;
-        mPagerAdapter.notifyDataSetChanged();
+    @Override public Fragment getItem(int position) {
+      mCursor.moveToPosition(position);
+      return ArticleDetailFragment.newInstance(mCursor.getLong(ArticleLoader.Query._ID));
     }
 
-    public void onUpButtonFloorChanged(long itemId, ArticleDetailFragment fragment) {
-        if (itemId == mSelectedItemId) {
-            mSelectedItemUpButtonFloor = fragment.getUpButtonFloor();
-            updateUpButtonPosition();
-        }
+    @Override public int getCount() {
+      return (mCursor != null) ? mCursor.getCount() : 0;
     }
-
-    private void updateUpButtonPosition() {
-        int upButtonNormalBottom = mTopInset + mUpButton.getHeight();
-        mUpButton.setTranslationY(Math.min(mSelectedItemUpButtonFloor - upButtonNormalBottom, 0));
-    }
-
-    private class MyPagerAdapter extends FragmentStatePagerAdapter {
-        public MyPagerAdapter(FragmentManager fm) {
-            super(fm);
-        }
-
-        @Override
-        public void setPrimaryItem(ViewGroup container, int position, Object object) {
-            super.setPrimaryItem(container, position, object);
-            ArticleDetailFragment fragment = (ArticleDetailFragment) object;
-            if (fragment != null) {
-                mSelectedItemUpButtonFloor = fragment.getUpButtonFloor();
-                updateUpButtonPosition();
-            }
-        }
-
-        @Override
-        public Fragment getItem(int position) {
-            mCursor.moveToPosition(position);
-            return ArticleDetailFragment.newInstance(mCursor.getLong(ArticleLoader.Query._ID));
-        }
-
-        @Override
-        public int getCount() {
-            return (mCursor != null) ? mCursor.getCount() : 0;
-        }
-    }
+  }
 }

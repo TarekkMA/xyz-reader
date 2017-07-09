@@ -17,12 +17,20 @@
 
 <resources>
 
-    <style name="Theme.Bacon" parent="@style/Theme.AppCompat.Light.NoActionBar">
+  <style name="Theme.MyApp"
+      parent="@style/Theme.AppCompat.Light.NoActionBar">
+    <item name="colorPrimary">@color/cyan_500</item>
+    <item name="colorPrimaryDark">@color/cyan_700</item>
+    <item name="colorAccent">@color/orange_a700</item>
+  </style>
 
-    </style>
+  <style name="Theme.MyApp.Detail">
 
-    <style name="Theme.Bacon.Detail">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-    </style>
+  </style>
+
+
+  <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+
+  <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
 
 </resources>
